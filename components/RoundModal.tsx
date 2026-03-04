@@ -6,14 +6,23 @@ import { PHASES } from '../constants';
 
 interface RoundModalProps {
   players: Player[];
+  initialEntries?: RoundEntry[];
+  isEditing?: boolean;
   onClose: () => void;
   onSubmit: (entries: RoundEntry[]) => void;
 }
 
-export const RoundModal: React.FC<RoundModalProps> = ({ players, onClose, onSubmit }) => {
-  const [entries, setEntries] = useState<RoundEntry[]>(
-    players.map(p => ({ playerId: p.id, points: 0, phaseCompleted: false }))
-  );
+export const RoundModal: React.FC<RoundModalProps> = ({ players, initialEntries, isEditing = false, onClose, onSubmit }) => {
+  const [entries, setEntries] = useState<RoundEntry[]>(() => {
+    if (initialEntries && initialEntries.length > 0) {
+      // Ensure all current players have an entry, even if they were added after this round
+      return players.map(p => {
+        const existing = initialEntries.find(e => e.playerId === p.id);
+        return existing || { playerId: p.id, points: 0, phaseCompleted: false };
+      });
+    }
+    return players.map(p => ({ playerId: p.id, points: 0, phaseCompleted: false }));
+  });
 
   const updateEntry = (index: number, updates: Partial<RoundEntry>) => {
     const newEntries = [...entries];
@@ -26,7 +35,7 @@ export const RoundModal: React.FC<RoundModalProps> = ({ players, onClose, onSubm
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl overflow-hidden flex flex-col max-h-[90vh]">
         <div className="p-6 border-b border-gray-100 flex justify-between items-center">
           <div>
-            <h2 className="text-2xl font-bold text-gray-900">End Current Round</h2>
+            <h2 className="text-2xl font-bold text-gray-900">{isEditing ? 'Edit Round' : 'End Current Round'}</h2>
             <p className="text-gray-500 text-sm">Enter scores and phase completions for each player.</p>
           </div>
           <button onClick={onClose} className="text-gray-400 hover:text-gray-600">
@@ -91,7 +100,9 @@ export const RoundModal: React.FC<RoundModalProps> = ({ players, onClose, onSubm
 
         <div className="p-6 bg-gray-50 border-t border-gray-100 flex gap-4">
           <Button variant="secondary" onClick={onClose} className="flex-1">Cancel</Button>
-          <Button variant="primary" onClick={() => onSubmit(entries)} className="flex-[2]">Confirm Round Scores</Button>
+          <Button variant="primary" onClick={() => onSubmit(entries)} className="flex-[2]">
+            {isEditing ? 'Save Changes' : 'Confirm Round Scores'}
+          </Button>
         </div>
       </div>
     </div>
