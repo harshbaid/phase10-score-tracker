@@ -1,0 +1,5 @@
+{
+  "name": "Phase 10 Score Tracker",
+  "description": "A sleek and professional score tracking application for Phase 10 card game enthusiasts, featuring local persistence, player progress tracking, and historical round data.",
+  "requestFramePermissions": []
+}
