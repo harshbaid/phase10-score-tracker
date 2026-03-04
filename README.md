@@ -12,6 +12,7 @@ Keep track of everyone's score and current phase without the hassle of pen and p
 - **History & Editing**: View a complete history of all rounds. Did someone make a mistake entering the score? No problem! You can edit past rounds, and the app will automatically recalculate everyone's current phase and total score from that point forward.
 - **Winner Detection**: Automatically detects when a player finishes Phase 10 and ends the game.
 - **Persistent Storage**: Game state is saved locally in your browser, so you won't lose your progress if you refresh or close the tab.
+- **Theme Support**: Play comfortably day or night with built-in Light, Dark, and System theme modes.
 
 ## User Guide
 
