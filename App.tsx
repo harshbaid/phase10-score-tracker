@@ -17,6 +17,9 @@ const App: React.FC = () => {
   const [newPlayerName, setNewPlayerName] = useState('');
   const [isRoundModalOpen, setIsRoundModalOpen] = useState(false);
   const [isInitialized, setIsInitialized] = useState(false);
+  const [editingRoundId, setEditingRoundId] = useState<string | null>(null);
+  const [editingRoundPlayersState, setEditingRoundPlayersState] = useState<Player[]>([]);
+  const [editingRoundEntries, setEditingRoundEntries] = useState<RoundEntry[]>([]);
 
   // Load game from local storage on mount
   useEffect(() => {
@@ -68,21 +71,28 @@ const App: React.FC = () => {
     }));
   };
 
-  const submitRound = (entries: RoundEntry[]) => {
-    setGameState(prev => {
-      const newHistory: Round = {
-        id: Math.random().toString(36).substr(2, 9),
-        timestamp: Date.now(),
-        entries
-      };
+  const recalculateState = (basePlayers: Player[], history: Round[]): Pick<GameState, 'players' | 'isGameOver'> => {
+    // Start with a fresh set of players based on their initial state (phase 1, score 0)
+    let currentPlayers = basePlayers.map(p => ({ ...p, currentPhase: 1, totalScore: 0 }));
+    let isGameOver = false;
 
-      const updatedPlayers = prev.players.map(player => {
-        const entry = entries.find(e => e.playerId === player.id);
+    // Process history chronologically (oldest to newest)
+    const chronologicalHistory = [...history].sort((a, b) => a.timestamp - b.timestamp);
+
+    for (const round of chronologicalHistory) {
+      let phase10CompletedInRound = false;
+
+      currentPlayers = currentPlayers.map(player => {
+        const entry = round.entries.find(e => e.playerId === player.id);
         if (!entry) return player;
 
         let nextPhase = player.currentPhase;
         if (entry.phaseCompleted && player.currentPhase < 10) {
           nextPhase += 1;
+        }
+
+        if (player.currentPhase === 10 && entry.phaseCompleted) {
+          phase10CompletedInRound = true;
         }
 
         return {
@@ -92,20 +102,59 @@ const App: React.FC = () => {
         };
       });
 
-      // Check for winner
-      const phase10CompletedInRound = entries.some(e => {
-        const p = prev.players.find(pl => pl.id === e.playerId);
-        return p?.currentPhase === 10 && e.phaseCompleted;
-      });
+      if (phase10CompletedInRound) {
+        isGameOver = true;
+      }
+    }
+
+    return { players: currentPlayers, isGameOver };
+  };
+
+  const editRound = (roundId: string) => {
+    const roundToEdit = gameState.history.find(r => r.id === roundId);
+    if (!roundToEdit) return;
+
+    // We need to calculate the state of players *exactly before* this round occurred.
+    // To do this, we replay history up to (but not including) this round.
+    const historyBeforeRound = gameState.history.filter(r => r.timestamp < roundToEdit.timestamp);
+    const stateBeforeRound = recalculateState(gameState.players, historyBeforeRound);
+
+    setEditingRoundId(roundId);
+    setEditingRoundPlayersState(stateBeforeRound.players);
+    setEditingRoundEntries(roundToEdit.entries);
+    setIsRoundModalOpen(true);
+  };
+
+  const submitRound = (entries: RoundEntry[]) => {
+    setGameState(prev => {
+      let newHistoryList = [...prev.history];
+
+      if (editingRoundId) {
+        // Update the existing round
+        newHistoryList = newHistoryList.map(r =>
+          r.id === editingRoundId ? { ...r, entries } : r
+        );
+      } else {
+        // Add a new round
+        const newHistory: Round = {
+          id: Math.random().toString(36).substr(2, 9),
+          timestamp: Date.now(),
+          entries
+        };
+        newHistoryList = [newHistory, ...prev.history];
+      }
+
+      const recalculated = recalculateState(prev.players, newHistoryList);
 
       return {
         ...prev,
-        players: updatedPlayers,
-        history: [newHistory, ...prev.history],
-        isGameOver: phase10CompletedInRound
+        players: recalculated.players,
+        history: newHistoryList,
+        isGameOver: recalculated.isGameOver
       };
     });
     setIsRoundModalOpen(false);
+    setEditingRoundId(null);
   };
 
   const resetGame = () => {
@@ -234,7 +283,18 @@ const App: React.FC = () => {
                 <div key={round.id} className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
                   <div className="bg-gray-50 px-4 py-2 border-b border-gray-100 flex justify-between items-center">
                     <span className="text-xs font-bold text-gray-500 uppercase">Round {gameState.history.length - idx}</span>
-                    <span className="text-xs text-gray-400">{new Date(round.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                    <div className="flex items-center gap-4">
+                      <span className="text-xs text-gray-400">{new Date(round.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                      <button
+                        onClick={() => editRound(round.id)}
+                        className="text-xs font-bold text-indigo-600 hover:text-indigo-800 uppercase tracking-wider transition-colors flex items-center gap-1"
+                      >
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3" viewBox="0 0 20 20" fill="currentColor">
+                          <path d="M13.586 3.586a2 2 0 112.828 2.828l-.793.793-2.828-2.828.793-.793zM11.379 5.793L3 14.172V17h2.828l8.38-8.379-2.83-2.828z" />
+                        </svg>
+                        Edit
+                      </button>
+                    </div>
                   </div>
                   <div className="divide-y divide-gray-50">
                     {round.entries.map(entry => {
@@ -277,8 +337,13 @@ const App: React.FC = () => {
       {/* Round Entry Modal */}
       {isRoundModalOpen && (
         <RoundModal 
-          players={gameState.players}
-          onClose={() => setIsRoundModalOpen(false)}
+          players={editingRoundId ? editingRoundPlayersState : gameState.players}
+          initialEntries={editingRoundId ? editingRoundEntries : undefined}
+          isEditing={!!editingRoundId}
+          onClose={() => {
+            setIsRoundModalOpen(false);
+            setEditingRoundId(null);
+          }}
           onSubmit={submitRound}
         />
       )}
